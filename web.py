@@ -19,162 +19,78 @@ import json
 class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     OPENFDA_API_URL="api.fda.gov"
     OPENFDA_API_EVENT="/drug/event.json"
-
     def send_smg(self):
+        html=''
         if self.path == '/':
             html=self.get_main_page()
-            self.wfile.write(bytes(html, "utf8"))
+        elif self.path.startswith('/listDrugs'):
+            QUERY=self.OPENFDA_API_EVENT+"?limit="+self.search_path()[1]
+            event=self.get_events(QUERY)
+            items=self.get_items(event)
+            html=self.event_html(items)
+        elif self.path.startswith('/listCompanies'):
+            QUERY=self.OPENFDA_API_EVENT+"?limit="+self.search_path()[1]
+            event=self.get_events(QUERY)
+            items=self.get_companies(event)
+            html=self.event_html(items)
+        elif 'Gender' in self.path:
+            QUERY=self.OPENFDA_API_EVENT+"?limit="+self.search_path()[1]
+            event=self.get_events(QUERY)
+            genders=self.get_gender(event)
+            html=self.event_html(genders)
         elif '/search' in self.path:
-            print (self.path)
-            if 'DRUG' in self.path:
-                drug=self.search_path()[1].split("=")
-                com_html=self.html_companies()
-                self.get_drug_event()
-                self.wfile.write(bytes(com_html, "utf8"))
-            elif 'COMPANY' in self.path:
-                com_html=self.html_search_companies()
-                self.get_drugs_from_company()
-                self.wfile.write(bytes(com_html, "utf8"))
-            else:
-                html=self.get_main_page()
-                self.wfile.write(bytes(html, "utf8"))
-        elif self.path == '/receive':
-            ev_html=self.event_html()
-            self.wfile.write(bytes(ev_html, "utf8"))
-        else:
-            self.wfile.write(bytes("No","utf8"))
-        return
-    def get_drug(self):
+            if 'drug' in self.path:
+                QUERY=self.OPENFDA_API_EVENT+'?search=patient.drug.medicinalproduct:'+self.search_path()[1].split('&')[0]+'&limit='+self.search_path()[2]
+                event=self.get_events(QUERY)
+                items=self.get_companies(event)
+                html=self.event_html(items)
+            elif 'company' in self.path:
+                QUERY=self.OPENFDA_API_EVENT+'?search=companynumb:'+self.search_path()[1].split('&')[0]+'&limit='+self.search_path()[2]
+                event=self.get_events(QUERY)
+                items=self.get_items(event)
+                html=self.event_html(items)
+        return (self.wfile.write(bytes(html, "utf8")))
+
+    def get_events(self,QUERY):
+        event=''
+        connection = http.client.HTTPSConnection(self.OPENFDA_API_URL) #asi indicamos que es parte de tu clase
+        connection.request("GET",QUERY) #PARA CAMBIAR EL EVENTO CAMBIAMOS EL NUMERO DESPUES DEL =
+        r1 = connection.getresponse()
+        data1 = r1.read() #te devuelve la informacion en bytes
+        data1 = data1.decode("utf8") #para pasar de bytes a string
+        event=data1
+        return event
+
+    def get_items(self,event):
         drug=[]
-        event=json.loads(self.get_events())
-        result=event["results"]
-        for event1 in result:
-            drug+= [event1["patient"]["drug"][0]["medicinalproduct"]]
+        eventstr=json.loads(event)
+        result=eventstr["results"]
+        for i in result:
+            drug += [i["patient"]["drug"][0]["medicinalproduct"]]
         return drug
+
+    def get_companies(self,event):
+        drug=[]
+        eventstr=json.loads(event)
+        result=eventstr["results"]
+        for i in result:
+            drug+=[i["companynumb"]]
+        return drug
+
+    def get_gender(self,event):
+        genders=[]
+        eventstr=json.loads(event)
+        result=eventstr["results"]
+        for gender in result:
+            genders+=[gender["patient"]["patientsex"]]
+        return genders
 
     def search_path(self):
-        print (self.path.split("?"))
-        return self.path.split("?")
-    def get_company_event(self):
-        event=''
-        connection = http.client.HTTPSConnection(self.OPENFDA_API_URL) #asi indicamos que es parte de tu clase
-        connection.request("GET",self.OPENFDA_API_EVENT+'?search=companynumb:'+self.search_path()[1].split("=")[1]+'&limit=10')
-        print("///////////////////")
-        print (self.search_path()[1].split("=")[1])
-        r1 = connection.getresponse()
-        data1 = r1.read() #te devuelve la informacion en bytes
-        data1 = data1.decode("utf8") #para pasar de bytes a string
-        event=data1
-        print (event)
-        return event
-    def get_drug_event(self):
-        event=''
-        connection = http.client.HTTPSConnection(self.OPENFDA_API_URL) #asi indicamos que es parte de tu clase
-        connection.request("GET",self.OPENFDA_API_EVENT+'?limit=10&search=patient.drug.medicinalproduct:"'+self.search_path()[1]+'"')
-        r1 = connection.getresponse()
-        data1 = r1.read() #te devuelve la informacion en bytes
-        data1 = data1.decode("utf8") #para pasar de bytes a string
-        event=data1
-        return event
-    def get_drugs_from_company(self):
-        drug=[]
-        event=json.loads(self.get_company_event())
-        result=event["results"]
-        for event1 in result:
-            drug += [event1["patient"]["drug"][0]["medicinalproduct"]]
-        print (drug)
-        return drug
+        return (self.path.split("="))
 
-    def get_companies(self):
-        drug=[]
-        event=json.loads(self.get_drug_event())
-        result=event["results"]
-        for event1 in result:
-            drug+= [event1["companynumb"]]
-        return drug
+    def in_event(self,event):
+        return (self.search_path()[1] in event)
 
-    def html_companies(self):
-        items=self.get_companies()
-        html='''
-        <html>
-        <head></head>
-        <body>
-            <ul>
-        '''
-        for commpany in items:
-            html+="<li>"+commpany+"</li>"
-        html+='''
-            </ul>
-        </body>
-        </html>
-        '''
-        return html
-    def get_main_page(self):
-        html='''<html>
-            <head>
-                <title>OpenFDA Client</title>
-            </head>
-            <body>
-                <h1>OpenFDA client</h1>
-                <form method="get" action="receive">
-                    <input type="submit" value="Ask for drugs">
-                    </input>
-                </form>
-                <form method="get" action="search">
-                    <input type="text" name='DRUG'></input>
-                    <input type="submit" value="Ask for companies"></input>
-                </form>
-                <form method="get" action="search">
-                    <input type="text" name='COMPANY'></input>
-                    <input type="submit" value="Ask for drugs"></input>
-                </form>
-            </body>
-        </html>
-        '''
-        return html
-
-    def event_html(self):
-        items=self.get_drug()
-        html='''
-        <html>
-        <head></head>
-        <body>
-            <ul>
-        '''
-        for drug in items:
-            html+="<li>"+drug+"</li>"
-        html+='''
-            </ul>
-        </body>
-        </html>
-        '''
-        return html
-    def html_search_companies(self):
-        items=self.get_drugs_from_company()
-        html='''
-        <html>
-        <head></head>
-        <body>
-            <ul>
-        '''
-        for commpany in items:
-            html+="<li>"+commpany+"</li>"
-        html+='''
-            </ul>
-        </body>
-        </html>
-        '''
-        return html
-
-    def get_events(self):
-        event=''
-        connection = http.client.HTTPSConnection(self.OPENFDA_API_URL) #asi indicamos que es parte de tu clase
-        connection.request("GET",self.OPENFDA_API_EVENT+"?limit=10") #PARA CAMBIAR EL EVENTO CAMBIAMOS EL NUMERO DESPUES DEL =
-        r1 = connection.getresponse()
-        data1 = r1.read() #te devuelve la informacion en bytes
-        data1 = data1.decode("utf8") #para pasar de bytes a string
-        event=data1
-        return event
     def do_GET(self):
         self.send_response(200)
         # Send headers
@@ -183,4 +99,60 @@ class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_smg()
         return
 
+#-----------------HTML--------------------
+    def event_html(self,items):
+        html='''
+        <html>
+        <head></head>
+        <body>
+            <ol>
+        '''
+        for item in items:
+            html+="<li>"+item+"</li>"
+        html+='''
+            </ol>
+        </body>
+        </html>
+        '''
+        return html
+
+    def get_main_page(self):
+        html='''<html>
+            <head>
+                <title>OpenFDA Client</title>
+            </head>
+            <body>
+                <h1>OpenFDA client</h1>
+                <form method="get" action="listDrugs">
+                    <input type="submit" value="List Drugs"></input>
+                    <input type="submit" value='Limit:'></input>
+                    <input type="text" name='limit'></input>
+                </form>
+                <form method="get" action="listCompanies">
+                    <input type="submit" value="List Companies"></input>
+                    <input type="submit" value="Limit:"></input>
+                    <input type="text" name="limit"></input>
+                </form>
+                <form method="get" action="listGender">
+                    <input type="submit" value="Search Gender"></input>
+                    <input type="submit" value="Limit:"></input>
+                    <input type="text" name="limit"></input>
+                </form>
+                <form method="get" action="searchDrug">
+                    <input type="text" name="drug"></input>
+                    <input type="submit" value="Ask for Companies"></input>
+                    <input type="submit" value="Limit:"></input>
+                    <input type="text" name="limit"></input>
+                </form>
+                <form method="get" action="searchCompany">
+                    <input type="text" name="company"></input>
+                    <input type="submit" value="Ask for drugs"></input>
+                    <input type="submit" value="Limit:"></input>
+                    <input type="text" name="limit"></input>
+                </form>
+            </body>
+        </html>
+        '''
+        return html
+#cabeceras: -curl -v -s
 #para devolver el diccionario lo pasamos a str con ",".join(a)
