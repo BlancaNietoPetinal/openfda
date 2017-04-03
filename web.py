@@ -20,36 +20,44 @@ class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     OPENFDA_API_URL="api.fda.gov"
     OPENFDA_API_EVENT="/drug/event.json"
     def send_smg(self):
+        limit=self.path.split('=')[-1]
         html=''
         if self.path == '/':
             html=self.get_main_page()
         elif self.path.startswith('/listDrugs'):
-            QUERY=self.OPENFDA_API_EVENT+"?limit="+self.search_path()[1]
+            QUERY=self.OPENFDA_API_EVENT+"?limit="+limit
             event=self.get_events(QUERY)
             items=self.get_items(event)
             html=self.event_html(items)
         elif self.path.startswith('/listCompanies'):
-            QUERY=self.OPENFDA_API_EVENT+"?limit="+self.search_path()[1]
+            QUERY=self.OPENFDA_API_EVENT+"?limit="+limit
             event=self.get_events(QUERY)
             items=self.get_companies(event)
             html=self.event_html(items)
         elif 'Gender' in self.path:
-            QUERY=self.OPENFDA_API_EVENT+"?limit="+self.search_path()[1]
+            QUERY=self.OPENFDA_API_EVENT+"?limit="+limit
             event=self.get_events(QUERY)
             genders=self.get_gender(event)
             html=self.event_html(genders)
         elif '/search' in self.path:
+            item_searched = self.path.split("=")[1].split('&')[0]
             if 'drug' in self.path:
-                QUERY=self.OPENFDA_API_EVENT+'?search=patient.drug.medicinalproduct:'+self.search_path()[1].split('&')[0]+'&limit='+self.search_path()[2]
+                QUERY=self.OPENFDA_API_EVENT+'?search=patient.drug.medicinalproduct:'+item_searched+'&limit='+limit
                 event=self.get_events(QUERY)
-                items=self.get_companies(event)
-                html=self.event_html(items)
+                if self.path.split("=")[1].split('&')[0] in event:
+                    items=self.get_companies(event)
+                    html=self.event_html(items)
+                else:
+                    html=''
             elif 'company' in self.path:
-                QUERY=self.OPENFDA_API_EVENT+'?search=companynumb:'+self.search_path()[1].split('&')[0]+'&limit='+self.search_path()[2]
+                QUERY=self.OPENFDA_API_EVENT+'?search=companynumb:'+item_searched+'&limit='+limit
                 event=self.get_events(QUERY)
-                items=self.get_items(event)
-                html=self.event_html(items)
-        return (self.wfile.write(bytes(html, "utf8")))
+                if self.search_path()[1].split('&')[0] in event:
+                    items=self.get_companies(event)
+                    html=self.event_html(items)
+                else:
+                    html=''
+        return (html)
 
     def get_events(self,QUERY):
         event=''
@@ -92,11 +100,16 @@ class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         return (self.search_path()[1] in event)
 
     def do_GET(self):
-        self.send_response(200)
+        html=self.send_smg()
+        if html=='':
+            self.send_response(404)
+            html=self.html_error404()
+        else:
+            self.send_response(200)
         # Send headers
         self.send_header('Content-type','text/html')
         self.end_headers()
-        self.send_smg()
+        self.wfile.write(bytes(html, "utf8"))
         return
 
 #-----------------HTML--------------------
@@ -154,5 +167,17 @@ class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         </html>
         '''
         return html
+    def html_error404(self):
+        html='''
+        <html>
+            <head>
+                <h1> Error 404 </h1>
+            </head>
+            <body>
+            </body>
+        </html>
+        '''
+        return html
+
 #cabeceras: -curl -v -s
 #para devolver el diccionario lo pasamos a str con ",".join(a)
