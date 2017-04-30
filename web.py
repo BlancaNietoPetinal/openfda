@@ -18,7 +18,7 @@ import json
 #el codigo ejecutable va lo ultimo
 # HTTPRequestHandler class
 class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
-    def send_smg(self):
+    def send_html(self):
         path=self.path
         html=''
         items=[]
@@ -27,25 +27,59 @@ class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             html=OpenFDAhtml().get_main_page()
 
         elif '/listDrugs' in self.path:
-            drugs=self.get_items(event)
+            drugs=OpenFDAParser().get_items(event)
             html=OpenFDAhtml().event_html(drugs)
+
         elif '/listCompanies' in self.path:
-            companies=self.get_companies(event)
+            companies=OpenFDAParser().get_companies(event)
             html=OpenFDAhtml().event_html(companies)
+
         elif '/listGender' in self.path:
-            gender=self.get_gender(event)
+            gender=OpenFDAParser().get_gender(event)
             html=OpenFDAhtml().event_html(gender)
+
         elif '/search' in self.path:
             if 'Company' in path:
-                items=self.get_items(event)
+                items=OpenFDAParser().get_items(event)
             else:
-                items=self.get_companies(event)
+                items=OpenFDAParser().get_companies(event)
             if items==-1:
                 html=''
             else:
                 html=OpenFDAhtml().event_html(items)
         return (html)
 
+    def do_GET(self):
+        html=self.send_html()
+
+        if self.path=='/secret':
+            self.send_response(401)
+            self.send_header('WWW-Authenticate ','Basic realm=\"Test\"')
+
+        elif self.path=='/redirect':
+            self.send_response(302)
+            self.send_header('Location', 'http://localhost:8000/')
+
+        elif html=='':
+            self.send_response(404)
+            self.send_header('Content-type','text/html')
+            html=OpenFDAhtml.html_error404()
+
+        else:
+            self.send_response(200)
+            self.send_header('Content-type','text/html')
+        self.end_headers()
+        self.wfile.write(bytes(html, "utf8"))
+        return
+
+class OpenFDAParser():
+    def get_gender(self,event):
+        genders=[]
+        eventstr=json.loads(event)
+        result=eventstr["results"]
+        for gender in result:
+            genders+=[gender["patient"]["patientsex"]]
+        return genders
 
     def get_items(self,event):
         drugs=[]
@@ -69,38 +103,11 @@ class testHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             companies_list=-1
         return companies_list
 
-    def get_gender(self,event):
-        genders=[]
-        eventstr=json.loads(event)
-        result=eventstr["results"]
-        for gender in result:
-            genders+=[gender["patient"]["patientsex"]]
-        return genders
-
-    def search_path(self):
-        return (self.path.split("="))
-
-    def in_event(self,event):
-        return (self.search_path()[1] in event)
-
-    def do_GET(self):
-        path=self.path
-        html=self.send_smg()
-        if html=='':
-            self.send_response(404)
-            html=OpenFDAhtml.html_error404()
-        else:
-            self.send_response(200)
-        # Send headers
-        self.send_header('Content-type','text/html')
-        self.end_headers()
-        self.wfile.write(bytes(html, "utf8"))
-        return
-
 
 class OpenFDAClient():
     OPENFDA_API_URL="api.fda.gov"
     OPENFDA_API_EVENT="/drug/event.json"
+
     def get_events(self,path):
         limit=''
         event=''
@@ -117,10 +124,10 @@ class OpenFDAClient():
             limit='10'
             item_searched = path.split("=")[1].split('&')[0]
             QUERY=self.OPENFDA_API_EVENT+'?search=companynumb:'+item_searched+'&limit='+limit
-        connection.request("GET",QUERY) #PARA CAMBIAR EL EVENTO CAMBIAMOS EL NUMERO DESPUES DEL =
+        connection.request("GET",QUERY) 
         r1 = connection.getresponse()
-        data1 = r1.read() #te devuelve la informacion en bytes
-        data1 = data1.decode("utf8") #para pasar de bytes a string
+        data1 = r1.read()
+        data1 = data1.decode("utf8")
         event=data1
         return event
 
@@ -149,18 +156,15 @@ class OpenFDAhtml():
             <body>
                 <h1>OpenFDA client</h1>
                 <form method="get" action="listDrugs">
-                    <input type="submit" value="List Drugs"></input>
-                    <input type="submit" value='Limit:'></input>
+                    List Drugs: <input type="submit" value='Limit:'></input>
                     <input type="text" name='limit'></input>
                 </form>
                 <form method="get" action="listCompanies">
-                    <input type="submit" value="List Companies"></input>
-                    <input type="submit" value="Limit:"></input>
+                    List Companies: <input type="submit" value="Limit:"></input>
                     <input type="text" name="limit"></input>
                 </form>
                 <form method="get" action="listGender">
-                    <input type="submit" value="List Gender"></input>
-                    <input type="submit" value="Limit:"></input>
+                    List Gender: <input type="submit" value="Limit:"></input>
                     <input type="text" name="limit"></input>
                 </form>
                 <form method="get" action="searchDrug">
@@ -186,9 +190,3 @@ class OpenFDAhtml():
         </html>
         '''
         return html
-
-#-----------------HTML--------------------
-
-
-#cabeceras: -curl -v -s
-#para devolver el diccionario lo pasamos a str con ",".join(a)
